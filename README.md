@@ -19,17 +19,21 @@ A modern, Django-based web application for managing hostel room bookings with ge
   - **Male Blocks**: B1, B2, B3
   - **Female Blocks**: G1, G2, G3
 - **Block Layout Visualization**: Interactive grid-based layout showing floors and rooms for each block
-- **Room Status**: Real-time availability status (Available/Booked) with color coding
-- **Room Details**: Comprehensive room information including block, floor, capacity, and booking status
+- **Room Status**: Real-time availability status (Available/Partially Booked/Full) with color coding
+- **Room Details**: Comprehensive room information including block, floor, capacity, occupancy, and booking status
+- **Occupancy Tracking**: Display current occupancy (e.g., "2/4") and available spots for each room
 
 ### 📅 Booking System
-- **One Room Per User**: Users can book only one room at a time
+- **Multi-Occupancy Support**: Multiple users can book the same room based on room capacity (e.g., if capacity is 2, two users can share the room)
+- **One Room Per User**: Users can book only one room at a time (but can share rooms with others)
 - **Gender-Based Filtering**: Users automatically see only blocks matching their gender
 - **Booking Confirmation**: Confirmation page before finalizing booking
-- **Booking Validation**: Prevents double booking and booking already taken rooms
+- **Booking Validation**: Prevents booking full rooms, double booking same room, and booking multiple rooms
+- **Occupancy Display**: Real-time display of current occupancy (e.g., "1/2", "2/2 Full") and available spots
+- **Occupant List**: View all current occupants of a room with their full names
 - **Cancel Booking**: Users can cancel their current booking
 - **Room Switching**: Users can switch to a different room (automatically cancels old booking)
-- **Full Name Display**: Shows the full name of students who have booked rooms
+- **Full Name Display**: Shows the full name of all students who have booked the room
 - **Booking Management**: Easy booking, cancellation, and viewing of room details
 
 ### 🎨 Modern UI/UX
@@ -188,14 +192,23 @@ hostel_booking/
 4. **View Block Layout**
    - Click on a block to view its layout
    - Browse available rooms organized by floors
-   - Color-coded room status (green = available, red = booked)
+   - Color-coded room status:
+     - **Green** = Available
+     - **Yellow** = Partially Booked (has occupants but spots available)
+     - **Red** = Full (at capacity)
+   - See occupancy information (e.g., "1/2", "2/2")
 
 5. **Book a Room**
-   - Click on an available room
-   - View room details (block, floor, capacity)
+   - Click on an available room (or partially booked room with available spots)
+   - View room details including:
+     - Block, floor, capacity
+     - Current occupancy (e.g., "1/2")
+     - Available spots
+     - List of current occupants (if any)
    - Click "Book This Room" button
-   - **Confirmation page** will appear asking you to confirm
+   - **Confirmation page** will appear showing occupancy information
    - Click "Yes, Confirm Booking" to finalize
+   - You can book a room even if others have already booked it, as long as there are available spots
 
 6. **Cancel Booking**
    - Go to Dashboard or Room Detail page
@@ -215,6 +228,7 @@ hostel_booking/
      - Personal information (including full name and gender)
      - Current booking details (if any)
      - Block and room information
+     - Room occupancy information (e.g., "2/4 occupants")
      - Quick action links
 
 ## 🗄️ Database Models
@@ -235,9 +249,14 @@ hostel_booking/
 ### Room
 - `room_number`: CharField - Room identifier
 - `floor`: ForeignKey to Floor
-- `capacity`: IntegerField - Maximum occupancy
-- `is_booked`: BooleanField - Booking status
-- `booked_by`: ForeignKey to User (nullable) - Student who booked the room
+- `capacity`: IntegerField - Maximum occupancy (e.g., 1, 2, 4)
+- `booked_by_users`: ManyToManyField to User - All students currently in the room
+- `is_booked`: BooleanField - True when room is at full capacity
+- `booked_by`: ForeignKey to User (nullable) - Primary occupant (first student who booked)
+- **Methods**:
+  - `get_current_occupancy()`: Returns current number of occupants
+  - `is_full()`: Returns True if room is at capacity
+  - `get_available_spots()`: Returns number of available spots
 
 ## 🎨 Design Features
 
@@ -257,11 +276,13 @@ hostel_booking/
 - ✅ Block layout visualization (grid-based)
 - ✅ Room detail pages with comprehensive information
 - ✅ Booking confirmation page
-- ✅ Room booking system (one room per user)
+- ✅ Multi-occupancy room booking system (multiple users can share rooms based on capacity)
+- ✅ Occupancy tracking and display (current occupants/available spots)
 - ✅ Booking cancellation functionality
 - ✅ Room switching (cancel old, book new)
-- ✅ Booking validation (prevents double booking)
-- ✅ Full name display for booked rooms
+- ✅ Booking validation (prevents booking full rooms, double booking same room)
+- ✅ Full name display for all room occupants
+- ✅ Partially-booked status visualization
 - ✅ Modern, responsive UI with SVG icons
 - ✅ Admin interface for managing blocks, floors, and rooms
 - ✅ Sample data population command
@@ -281,12 +302,19 @@ hostel_booking/
   - Male users see: B1, B2, B3
   - Female users see: G1, G2, G3
   - Access is strictly enforced - attempting to access wrong gender blocks results in error
-- **One Room Per User**: Users can only book one room at a time
+- **Multi-Occupancy Rooms**: Multiple users can book the same room if it has available capacity
+  - If a room has capacity 2, two different users can book it
+  - If a room has capacity 4, up to four users can share it
+  - Occupancy is displayed as "current/capacity" (e.g., "2/4")
+- **One Room Per User**: Users can only book one room at a time (but can share that room with others)
 - **Booking Confirmation**: All bookings require confirmation before finalizing
 - **Booking Cancellation**: Users can cancel their bookings at any time
 - **Room Switching**: Users can switch rooms, which automatically cancels the old booking
-- **Booking Status**: Booked rooms are clearly marked and cannot be booked again
-- **Full Name Display**: When a room is booked, it shows "This room is already booked by another student named [Full Name]"
+- **Room Status**: 
+  - **Available**: Room has no occupants
+  - **Partially Booked**: Room has some occupants but spots are still available
+  - **Full**: Room is at capacity and cannot accept more bookings
+- **Occupant Display**: Shows all current occupants with their full names when viewing room details
 - **Responsive Design**: All pages are mobile-friendly and responsive
 - **No JavaScript Required**: Pure HTML/CSS implementation for MVP
 
