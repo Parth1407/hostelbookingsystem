@@ -34,7 +34,8 @@ def logout_view(request):
 
 @login_required
 def dashboard_view(request):
-    user_room = Room.objects.filter(booked_by=request.user, is_booked=True).first()
+    # Find room where user is an occupant
+    user_room = Room.objects.filter(booked_by_users=request.user).first()
     context = {
         'user': request.user,
         'user_room': user_room,
@@ -135,17 +136,25 @@ def room_detail_view(request, room_id):
         messages.error(request, f'Access denied: You cannot access rooms in {room.floor.block.block_name} block. This block is for {room.floor.block.get_gender_display()}s only.')
         return redirect('blocks_list')
     
-    user_room = Room.objects.filter(booked_by=request.user, is_booked=True).first()
-    user_has_booking = user_room is not None
-    is_user_room = room.booked_by == request.user if room.is_booked else False
-    can_book = not room.is_booked and not user_has_booking
+    # Check if user is already in this room
+    user_in_room = room.booked_by_users.filter(id=request.user.id).exists()
+    # Check if user has any booking
+    user_has_booking = Room.objects.filter(booked_by_users=request.user).exists()
+    # Check if room has available spots
+    available_spots = room.get_available_spots()
+    can_book = available_spots > 0 and not user_in_room
+    
+    # Get all occupants
+    occupants = room.booked_by_users.all()
     
     context = {
         'room': room,
         'can_book': can_book,
         'user_has_booking': user_has_booking,
-        'user_room': user_room,
-        'is_user_room': is_user_room,
+        'user_in_room': user_in_room,
+        'available_spots': available_spots,
+        'current_occupancy': room.get_current_occupancy(),
+        'occupants': occupants,
     }
     return render(request, 'hostel/room_detail.html', context)
 
@@ -174,16 +183,24 @@ def confirm_booking_view(request, room_id):
         messages.error(request, f'Access denied: You cannot book rooms in {room.floor.block.block_name} block. This block is for {room.floor.block.get_gender_display()}s only.')
         return redirect('blocks_list')
     
-    # Check if room is available
-    if room.is_booked:
-        messages.error(request, 'This room is already booked.')
+    # Check if room is full
+    if room.is_full():
+        messages.error(request, 'This room is at full capacity.')
         return redirect('room_detail', room_id=room.id)
     
-    user_has_booking = Room.objects.filter(booked_by=request.user, is_booked=True).exists()
+    # Check if user is already in this room
+    if room.booked_by_users.filter(id=request.user.id).exists():
+        messages.error(request, 'You are already booked in this room.')
+        return redirect('room_detail', room_id=room.id)
+    
+    user_has_booking = Room.objects.filter(booked_by_users=request.user).exists()
+    available_spots = room.get_available_spots()
     
     context = {
         'room': room,
         'user_has_booking': user_has_booking,
+        'available_spots': available_spots,
+        'current_occupancy': room.get_current_occupancy(),
     }
     return render(request, 'hostel/confirm_booking.html', context)
 
@@ -211,30 +228,49 @@ def book_room_view(request, room_id):
         messages.error(request, f'Access denied: You cannot book rooms in {room.floor.block.block_name} block. This block is for {room.floor.block.get_gender_display()}s only.')
         return redirect('blocks_list')
     
-    # Check if room is available
-    if room.is_booked:
-        messages.error(request, 'This room is already booked.')
+    # Check if room is full
+    if room.is_full():
+        messages.error(request, 'This room is at full capacity.')
         return redirect('room_detail', room_id=room.id)
     
-    # Check if user already has a booking
-    user_room = Room.objects.filter(booked_by=request.user, is_booked=True).first()
-    if user_room:
+    # Check if user is already in this room
+    if room.booked_by_users.filter(id=request.user.id).exists():
+        messages.error(request, 'You are already booked in this room.')
+        return redirect('room_detail', room_id=room.id)
+    
+    # Check if user already has a booking in another room
+    user_other_room = Room.objects.filter(booked_by_users=request.user).exclude(id=room.id).first()
+    if user_other_room:
         # Allow booking if they want to switch (we'll cancel the old one)
         if request.POST.get('confirm_switch') == 'yes':
-            # Cancel old booking
-            user_room.is_booked = False
-            user_room.booked_by = None
-            user_room.save()
+            # Remove user from old room
+            user_other_room.booked_by_users.remove(request.user)
+            # Refresh from database
+            user_other_room.refresh_from_db()
+            # Update old room's booked_by and is_booked
+            if user_other_room.booked_by == request.user:
+                if user_other_room.booked_by_users.exists():
+                    user_other_room.booked_by = user_other_room.booked_by_users.first()
+                else:
+                    user_other_room.booked_by = None
+            user_other_room.is_booked = user_other_room.is_full()
+            user_other_room.save()
         else:
             messages.error(request, 'You already have a room booked. Please cancel it first or confirm to switch rooms.')
             return redirect('room_detail', room_id=room.id)
     
-    # Book the room
-    room.is_booked = True
-    room.booked_by = request.user
+    # Add user to the room
+    room.booked_by_users.add(request.user)
+    # Refresh from database to get updated count
+    room.refresh_from_db()
+    # Update is_booked and booked_by
+    room.is_booked = room.is_full()
+    if not room.booked_by:
+        room.booked_by = request.user
     room.save()
     
-    messages.success(request, f'Successfully booked room {room.room_number} in {room.floor.block.block_name}!')
+    current_occupancy = room.get_current_occupancy()
+    messages.success(request, f'Successfully booked room {room.room_number} in {room.floor.block.block_name}! ({current_occupancy}/{room.capacity} occupants)')
     return redirect('dashboard')
 
 
@@ -243,18 +279,24 @@ def cancel_booking_view(request, room_id):
     """Cancel a booking"""
     room = get_object_or_404(Room, id=room_id)
     
-    # Check if this is the user's room
-    if room.booked_by != request.user:
-        messages.error(request, 'You can only cancel your own bookings.')
+    # Check if user is in this room
+    if not room.booked_by_users.filter(id=request.user.id).exists():
+        messages.error(request, 'You are not booked in this room.')
         return redirect('dashboard')
     
-    if not room.is_booked:
-        messages.error(request, 'This room is not booked.')
-        return redirect('dashboard')
+    # Remove user from room
+    room.booked_by_users.remove(request.user)
+    # Refresh from database to get updated count
+    room.refresh_from_db()
     
-    # Cancel the booking
-    room.is_booked = False
-    room.booked_by = None
+    # Update booked_by and is_booked
+    if room.booked_by == request.user:
+        if room.booked_by_users.exists():
+            room.booked_by = room.booked_by_users.first()
+        else:
+            room.booked_by = None
+    
+    room.is_booked = room.is_full()
     room.save()
     
     messages.success(request, f'Successfully cancelled booking for room {room.room_number}.')

@@ -48,8 +48,11 @@
                                 </svg>
                                 Capacity: {{ room.capacity }}
                             </div>
-                            <div class="room-status {% if room.is_booked %}status-booked{% else %}status-available{% endif %}">
-                                {% if room.is_booked %}Booked{% else %}Available{% endif %}
+                            <div class="room-occupancy" style="font-size: 0.85rem; color: var(--text-gray); margin-top: 0.25rem;">
+                                Occupancy: {{ room.get_current_occupancy }}/{{ room.capacity }}
+                            </div>
+                            <div class="room-status {% if room.is_full %}status-booked{% elif room.get_current_occupancy > 0 %}status-partial{% else %}status-available{% endif %}">
+                                {% if room.is_full %}Full{% elif room.get_current_occupancy > 0 %}Partially Booked{% else %}Available{% endif %}
                             </div>
                         </a>
                     {% endfor %}

@@ -11,17 +11,22 @@
             </svg>
             Room {{ room.room_number }}
         </h1>
-        <div class="booking-status {% if room.is_booked %}booked{% else %}available{% endif %}">
-            {% if room.is_booked %}
+        <div class="booking-status {% if room.is_full %}booked{% elif current_occupancy > 0 %}partially-booked{% else %}available{% endif %}">
+            {% if room.is_full %}
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
-                <strong>Status: Booked</strong>
+                <strong>Status: Full ({{ current_occupancy }}/{{ room.capacity }})</strong>
+            {% elif current_occupancy > 0 %}
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <strong>Status: Partially Booked ({{ current_occupancy }}/{{ room.capacity }}) - {{ available_spots }} spot(s) available</strong>
             {% else %}
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <strong>Status: Available</strong>
+                <strong>Status: Available ({{ room.capacity }} spot(s))</strong>
             {% endif %}
         </div>
     </div>
@@ -63,30 +68,48 @@
             </span>
             <span class="detail-value">{{ room.capacity }} person(s)</span>
         </div>
-        {% if room.is_booked %}
-            <div class="detail-item">
-                <span class="detail-label">
+        <div class="detail-item">
+            <span class="detail-label">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Occupancy:
+            </span>
+            <span class="detail-value">{{ current_occupancy }}/{{ room.capacity }} ({{ available_spots }} available)</span>
+        </div>
+        {% if occupants %}
+            <div class="detail-item" style="flex-direction: column; align-items: flex-start;">
+                <span class="detail-label" style="margin-bottom: 0.75rem;">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
-                    Booked By:
+                    Current Occupants:
                 </span>
-                <span class="detail-value">
-                    {% if room.booked_by.first_name or room.booked_by.last_name %}
-                        {{ room.booked_by.get_full_name }}
-                    {% else %}
-                        {{ room.booked_by.username }}
-                    {% endif %}
-                </span>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem; width: 100%;">
+                    {% for occupant in occupants %}
+                        <div style="padding: 0.75rem; background: var(--bg-white); border-radius: 8px; border: 1px solid var(--border-color);">
+                            <strong>
+                                {% if occupant.first_name or occupant.last_name %}
+                                    {{ occupant.get_full_name }}
+                                {% else %}
+                                    {{ occupant.username }}
+                                {% endif %}
+                            </strong>
+                            {% if occupant == user %}
+                                <span style="color: var(--primary-blue); font-size: 0.875rem; margin-left: 0.5rem;">(You)</span>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
             </div>
         {% endif %}
     </div>
     
     <div class="action-buttons">
-        {% if is_user_room %}
+        {% if user_in_room %}
             <form method="post" action="{% url 'cancel_booking' room.id %}" style="flex: 1;">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to cancel this booking?');">
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to cancel your booking in this room?');">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -105,16 +128,9 @@
                 You already have a room booked. 
                 <a href="{% url 'confirm_booking' room.id %}" style="color: #92400e; text-decoration: underline; font-weight: 600;">Click here to switch to this room</a>
             </div>
-        {% elif room.is_booked %}
+        {% elif room.is_full %}
             <div style="flex: 1; padding: 1rem; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); color: #991b1b; border-radius: 10px; text-align: center; border: 2px solid #fca5a5; font-weight: 500;">
-                This room is already booked by another student named 
-                <strong>
-                    {% if room.booked_by.first_name or room.booked_by.last_name %}
-                        {{ room.booked_by.get_full_name }}
-                    {% else %}
-                        {{ room.booked_by.username }}
-                    {% endif %}
-                </strong>.
+                This room is at full capacity ({{ current_occupancy }}/{{ room.capacity }}).
             </div>
         {% endif %}
         <a href="{% url 'block_layout' room.floor.block.id %}" class="btn btn-secondary">
